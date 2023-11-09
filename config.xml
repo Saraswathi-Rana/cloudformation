@@ -73,7 +73,7 @@
                                 app.push("latest")
                                 sleep time: 30, unit: 'SECONDS'
                                 }
-                            }
+			    }
                         }
                     }
       
