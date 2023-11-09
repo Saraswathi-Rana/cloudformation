@@ -55,7 +55,7 @@
                             }
                         }
                     }
-                    stage('Junit Test & Security Tests'){
+                    stage('Junit Test &amp; Security Tests'){
                         steps {
                             echo 'Empty'
                         }
