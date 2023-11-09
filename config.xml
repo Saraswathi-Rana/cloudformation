@@ -41,6 +41,7 @@
                 options {
                     skipStagesAfterUnstable()
                 }
+                stages {
                     stage('Clone repository') { 
                         steps { 
                             script{
@@ -73,7 +74,7 @@
                                 app.push("latest")
                                 sleep time: 30, unit: 'SECONDS'
                                 }
-			    }
+                            }
                         }
                     }
       
