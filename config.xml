@@ -1,0 +1,129 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<flow-definition plugin="workflow-job@1254.v3f64639b_11dd">
+	<actions>
+		<org.jenkinsci.plugins.pipeline.modeldefinition.actions.DeclarativeJobAction plugin="pipeline-model-definition@2.2118.v31fd5b_9944b_5"/>
+		<org.jenkinsci.plugins.pipeline.modeldefinition.actions.DeclarativeJobPropertyTrackerAction plugin="pipeline-model-definition@2.2118.v31fd5b_9944b_5">
+			<jobProperties/>
+			<triggers/>
+			<parameters/>
+			<options>
+				<string>skipStagesAfterUnstable</string>
+			</options>
+		</org.jenkinsci.plugins.pipeline.modeldefinition.actions.DeclarativeJobPropertyTrackerAction>
+	</actions>
+	<description/>
+	<keepDependencies>false</keepDependencies>
+	<properties>
+		<jenkins.model.BuildDiscarderProperty>
+			<strategy class="hudson.tasks.LogRotator">
+				<daysToKeep>1</daysToKeep>
+				<numToKeep>5</numToKeep>
+				<artifactDaysToKeep>-1</artifactDaysToKeep>
+				<artifactNumToKeep>-1</artifactNumToKeep>
+			</strategy>
+		</jenkins.model.BuildDiscarderProperty>
+		<com.coravy.hudson.plugins.github.GithubProjectProperty plugin="github@1.36.0">
+			<projectUrl>https://github.com/msystec/source-repo.git/</projectUrl>
+			<displayName/>
+		</com.coravy.hudson.plugins.github.GithubProjectProperty>
+		<org.jenkinsci.plugins.workflow.job.properties.PipelineTriggersJobProperty>
+			<triggers>
+				<com.cloudbees.jenkins.GitHubPushTrigger plugin="github@1.36.0">
+					<spec/>
+				</com.cloudbees.jenkins.GitHubPushTrigger>
+			</triggers>
+		</org.jenkinsci.plugins.workflow.job.properties.PipelineTriggersJobProperty>
+	</properties>
+	<definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition" plugin="workflow-cps@3583.v4f58de0d78d5">
+		<script>
+		    pipeline {
+                agent any
+                options {
+                    skipStagesAfterUnstable()
+                }
+                stages {
+                    stage('CleanWorkspace') {
+                        steps {
+                            cleanWs()
+                        }
+                    }
+                    stage('Clone repository') { 
+                        steps { 
+                            script{
+                                checkout([$class: 'GitSCM', branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[url: 'https://github.com/msystec/source-repo.git']]])
+                                sleep time: 30, unit: 'SECONDS'
+                            }
+                        }
+                    }
+                    stage('Junit Test & Security Tests'){
+                        steps {
+                            echo 'Empty'
+                        }
+                    }
+
+                    stage('Docker Build') { 
+                        steps { 
+                            script{
+                                sh 'cd ${WORKSPACE}/src/app/'
+                                app = docker.build("jenkins_pipeline", "-f ${WORKSPACE}/src/app/Dockerfile .")
+                                sleep time: 30, unit: 'SECONDS'
+                            }
+                        }
+                    }
+      
+                    stage('Docker Image push into ECR') {
+                        steps {
+                            script{
+                                docker.withRegistry('https://267767410086.dkr.ecr.us-east-1.amazonaws.com/jenkins_pipeline', 'ecr:us-east-1:aws-credentials') {
+                                app.push("${env.BUILD_NUMBER}")
+                                app.push("latest")
+                                sleep time: 30, unit: 'SECONDS'
+                                }
+                            }
+                        }
+                    }
+                    stage('Clean Source repo') {
+                        steps {
+                            cleanWs()
+                        }
+                    }
+      
+                    stage('Updating HELM Charts') { 
+             
+                        environment {
+                            HELM_GIT_REPO_URL = "https://github.com/msystec/config.git"
+                            GIT_REPO_EMAIL = 'sharanagoudas144@gmail.com '
+                            GIT_REPO_BRANCH = "main"
+                            TAG_ID = "${env.BUILD_NUMBER}"
+                            GIT_USER = 'msystec'
+                            GIT_CREDS = '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'
+                        }
+      
+                        steps {
+                            script{
+                                checkout([$class: 'GitSCM', branches: [[name: "*/${GIT_REPO_BRANCH}"]], extensions: [], userRemoteConfigs: [[url: "${HELM_GIT_REPO_URL}"]]])
+                            }
+                
+                        sh '''#!/bin/bash
+            
+                            git checkout -b ${GIT_REPO_BRANCH}
+                            sudo yq eval '.deployment.container.image.tag = "'$TAG_ID'"' -i $WORKSPACE/deploy/helm/hello-kubernetes/values.yaml
+              
+                            git add $WORKSPACE/deploy/helm/hello-kubernetes/values.yaml 
+                            git commit -m 'Triggered Build'
+             
+                            git push https://$GIT_USER:$GIT_CREDS@github.com/msystec/config.git
+            
+                        '''
+             
+                        }
+                    }
+            
+                }
+            }
+        </script>
+		<sandbox>true</sandbox>
+	</definition>
+	<triggers/>
+	<disabled>false</disabled>
+</flow-definition>
